@@ -9,19 +9,15 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(100*time.Millisecond))
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Duration(100*time.Millisecond))
+	// defer cancel()
+	ctx := context.Background()
 
 	dispatcher := scanner.NewDispatcher(3)
 	addresses := []string{
-		"192.168.1.1",
-		"10.0.0.15",
-		"172.16.0.1",
-		"8.8.8.8",
-		"1.1.1.1",
-		"93.184.216.34",
-		"140.82.121.4",
-		"127.0.0.1",
+		"google.com:80",
+		"google.com:12345",
+		"8.8.8:53",
 	}
 
 	res := dispatcher.Start(ctx, addresses)

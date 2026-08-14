@@ -2,9 +2,8 @@ package scanner
 
 import (
 	"context"
-	"fmt"
 	"github.com/undndnwnkk/go-pulse/internal/model"
-	"math/rand/v2"
+	"net"
 	"sync"
 	"time"
 )
@@ -49,6 +48,7 @@ func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.R
 
 func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Result, wg *sync.WaitGroup) {
 	defer wg.Done()
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
 	for val := range jobs {
 		select {
 		case <-ctx.Done():
@@ -57,18 +57,25 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 		}
 		start := time.Now()
 
-		time.Sleep(time.Millisecond * time.Duration(rand.IntN(80)+20))
-
+		// time.Sleep(time.Millisecond * time.Duration(rand.IntN(80)+20))
 		res := model.Result{
 			Address: val.Address,
-			Latency: time.Since(start),
 		}
+		conn, err := dialer.DialContext(ctx, "tcp", val.Address)
+		res.Latency = time.Since(start)
 
-		if rand.Float32() < 0.7 {
-			res.Err = fmt.Errorf("connect error")
+		if err != nil {
 			res.Success = false
+			res.Err = err
+
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				res.ErrType = model.ErrTimeout
+			} else {
+				res.ErrType = model.ErrConnectionRefused
+			}
 		} else {
 			res.Success = true
+			conn.Close()
 		}
 
 		select {
