@@ -1,9 +1,9 @@
-package service
+package scanner
 
 import (
 	"context"
 	"fmt"
-	"github.com/undndnwnkk/go-pulse/model"
+	"github.com/undndnwnkk/go-pulse/internal/model"
 	"math/rand/v2"
 	"sync"
 	"time"

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/undndnwnkk/go-pulse/service"
+	"github.com/undndnwnkk/go-pulse/internal/scanner"
 	"log/slog"
 	"runtime"
 	"time"
@@ -12,7 +12,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(100*time.Millisecond))
 	defer cancel()
 
-	dispatcher := service.NewDispatcher(3)
+	dispatcher := scanner.NewDispatcher(3)
 	addresses := []string{
 		"192.168.1.1",
 		"10.0.0.15",
