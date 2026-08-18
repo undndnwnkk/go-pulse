@@ -5,15 +5,17 @@ import (
 	"github.com/undndnwnkk/go-pulse/internal/model"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Dispatcher struct {
 	NumWorkers int
+	Stats      *model.Stats
 }
 
-func NewDispatcher(workers int) *Dispatcher {
-	return &Dispatcher{NumWorkers: workers}
+func NewDispatcher(workers int, stats *model.Stats) *Dispatcher {
+	return &Dispatcher{NumWorkers: workers, Stats: stats}
 }
 
 func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.Result {
@@ -35,7 +37,7 @@ func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.R
 
 	for i := 1; i <= d.NumWorkers; i++ {
 		wg.Add(1)
-		go worker(ctx, jobsCh, resCh, &wg)
+		go worker(ctx, jobsCh, resCh, &wg, d.Stats)
 	}
 
 	go func() {
@@ -46,7 +48,7 @@ func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.R
 	return resCh
 }
 
-func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Result, wg *sync.WaitGroup) {
+func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Result, wg *sync.WaitGroup, stats *model.Stats) {
 	defer wg.Done()
 	dialer := &net.Dialer{Timeout: 3 * time.Second}
 	for val := range jobs {
@@ -67,6 +69,8 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 		if err != nil {
 			res.Success = false
 			res.Err = err
+			atomic.AddInt64(&stats.Failed, 1)
+			atomic.AddInt64(&stats.Total, 1)
 
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				res.ErrType = model.ErrTimeout
@@ -75,6 +79,8 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 			}
 		} else {
 			res.Success = true
+			atomic.AddInt64(&stats.Successfull, 1)
+			atomic.AddInt64(&stats.Total, 1)
 			conn.Close()
 		}
 
