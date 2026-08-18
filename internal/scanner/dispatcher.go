@@ -5,7 +5,6 @@ import (
 	"github.com/undndnwnkk/go-pulse/internal/model"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -69,8 +68,7 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 		if err != nil {
 			res.Success = false
 			res.Err = err
-			atomic.AddInt64(&stats.Failed, 1)
-			atomic.AddInt64(&stats.Total, 1)
+			stats.IncFailed()
 
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				res.ErrType = model.ErrTimeout
@@ -79,8 +77,7 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 			}
 		} else {
 			res.Success = true
-			atomic.AddInt64(&stats.Successfull, 1)
-			atomic.AddInt64(&stats.Total, 1)
+			stats.IncSuccessfull()
 			conn.Close()
 		}
 

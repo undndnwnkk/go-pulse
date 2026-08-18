@@ -29,7 +29,11 @@ func main() {
 			"success", val.Success,
 		)
 	}
-	slog.Info("statistics", "total", stats.Total, "successfull", stats.Successfull, "failed", stats.Failed)
+	slog.Info("statistics",
+		"total", stats.Total(),
+		"successfull", stats.Successfull(),
+		"failed", stats.Failed(),
+	)
 
 	time.Sleep(1 * time.Second)
 	slog.Info("active goroutines", "count", runtime.NumGoroutine())
