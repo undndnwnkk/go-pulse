@@ -3,25 +3,31 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/undndnwnkk/go-pulse/internal/model"
-	"github.com/undndnwnkk/go-pulse/internal/scanner"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/undndnwnkk/go-pulse/internal/model"
+	"github.com/undndnwnkk/go-pulse/internal/scanner"
 )
 
 func main() {
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Duration(100*time.Millisecond))
-	// defer cancel()
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	stats := model.Stats{}
+	go func() {
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			slog.Error("pprof server error", "error", err)
+		}
+	}()
 
-	dispatcher := scanner.NewDispatcher(3, &stats, 2)
+	stats := model.Stats{}
+	dispatcher := scanner.NewDispatcher(100, &stats, 500)
 
 	file, err := os.Open("target.txt")
 	if err != nil {
@@ -41,17 +47,18 @@ func main() {
 	}
 	fmt.Println()
 
-	time.Sleep(1 * time.Second)
-	slog.Info("active goroutines", "count", runtime.NumGoroutine())
+	if ctx.Err() != nil {
+		fmt.Println("\nScan interrupted by user (Ctrl+C). Finalizing...")
+	} else {
+		fmt.Println("\nScan completed successfully!")
+	}
 
-	<-ctx.Done()
-
-	fmt.Println("\nFINAL STATS")
-	fmt.Printf("\r\033[K[Progress: %d] | Success: %d | Failed: %d\n",
+	fmt.Printf("[FINAL STATS] Total: %d | Success: %d | Failed: %d\n",
 		stats.Total(),
 		stats.Successfull(),
 		stats.Failed(),
 	)
 
-	fmt.Println("Scan interrupting by user. Finalizing...")
+	time.Sleep(100 * time.Millisecond)
+	slog.Info("active goroutines", "count", runtime.NumGoroutine())
 }
