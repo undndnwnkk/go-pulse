@@ -15,7 +15,7 @@ func main() {
 	ctx := context.Background()
 	stats := model.Stats{}
 
-	dispatcher := scanner.NewDispatcher(3, &stats)
+	dispatcher := scanner.NewDispatcher(3, &stats, 2)
 	addresses := []string{
 		"google.com:80",
 		"google.com:12345",

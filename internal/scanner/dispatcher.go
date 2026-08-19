@@ -11,19 +11,23 @@ import (
 type Dispatcher struct {
 	NumWorkers int
 	Stats      *model.Stats
+	RPS        int
 }
 
-func NewDispatcher(workers int, stats *model.Stats) *Dispatcher {
-	return &Dispatcher{NumWorkers: workers, Stats: stats}
+func NewDispatcher(workers int, stats *model.Stats, rps int) *Dispatcher {
+	return &Dispatcher{NumWorkers: workers, Stats: stats, RPS: rps}
 }
 
 func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.Result {
 	resCh := make(chan model.Result, d.NumWorkers)
 	jobsCh := make(chan model.Job)
+	ticker := time.NewTicker(time.Second / time.Duration(d.RPS))
+	defer ticker.Stop()
 
 	go func() {
 		defer close(jobsCh)
 		for _, val := range targets {
+			<-ticker.C
 			select {
 			case <-ctx.Done():
 				return
