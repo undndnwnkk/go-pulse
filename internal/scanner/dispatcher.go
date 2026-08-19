@@ -1,7 +1,10 @@
 package scanner
 
 import (
+	"bufio"
 	"context"
+	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -19,7 +22,7 @@ func NewDispatcher(workers int, stats *model.Stats, rps int) *Dispatcher {
 	return &Dispatcher{NumWorkers: workers, Stats: stats, RPS: rps}
 }
 
-func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.Result {
+func (d *Dispatcher) Start(ctx context.Context, r io.Reader) <-chan model.Result {
 	resCh := make(chan model.Result, d.NumWorkers)
 	jobsCh := make(chan model.Job)
 
@@ -31,11 +34,19 @@ func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.R
 
 		if d.RPS > 0 {
 			ticker = time.NewTicker(time.Second / time.Duration(d.RPS))
-			defer ticker.Stop() // defer внутри горутины, где создан тикер!
+			defer ticker.Stop()
 			tickerChan = ticker.C
 		}
 
-		for _, val := range targets {
+		scanner := bufio.NewScanner(r)
+
+		for scanner.Scan() {
+			val := scanner.Text()
+
+			if val == "" {
+				continue
+			}
+
 			if tickerChan != nil {
 				select {
 				case <-ctx.Done():
@@ -49,6 +60,10 @@ func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.R
 				return
 			case jobsCh <- model.Job{Address: val}:
 			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			slog.Error("scanner error", "error", err)
 		}
 	}()
 
@@ -71,6 +86,9 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 	defer wg.Done()
 	dialer := &net.Dialer{Timeout: 3 * time.Second}
 
+	const maxRetries = 3
+	const retryDelay = 100 * time.Millisecond
+
 	for val := range jobs {
 		if ctx.Err() != nil {
 			return
@@ -81,7 +99,26 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 			Address: val.Address,
 		}
 
-		conn, err := dialer.DialContext(ctx, "tcp", val.Address)
+		var conn net.Conn
+		var err error
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			conn, err = dialer.DialContext(ctx, "tcp", val.Address)
+			if err == nil {
+				break
+			}
+
+			if attempt == maxRetries || ctx.Err() != nil {
+				break
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(retryDelay):
+			}
+		}
+
 		res.Latency = time.Since(start)
 
 		if err != nil {
