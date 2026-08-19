@@ -2,10 +2,11 @@ package scanner
 
 import (
 	"context"
-	"github.com/undndnwnkk/go-pulse/internal/model"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/undndnwnkk/go-pulse/internal/model"
 )
 
 type Dispatcher struct {
@@ -21,13 +22,28 @@ func NewDispatcher(workers int, stats *model.Stats, rps int) *Dispatcher {
 func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.Result {
 	resCh := make(chan model.Result, d.NumWorkers)
 	jobsCh := make(chan model.Job)
-	ticker := time.NewTicker(time.Second / time.Duration(d.RPS))
-	defer ticker.Stop()
 
 	go func() {
 		defer close(jobsCh)
+
+		var ticker *time.Ticker
+		var tickerChan <-chan time.Time
+
+		if d.RPS > 0 {
+			ticker = time.NewTicker(time.Second / time.Duration(d.RPS))
+			defer ticker.Stop() // defer внутри горутины, где создан тикер!
+			tickerChan = ticker.C
+		}
+
 		for _, val := range targets {
-			<-ticker.C
+			if tickerChan != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tickerChan:
+				}
+			}
+
 			select {
 			case <-ctx.Done():
 				return
@@ -54,18 +70,17 @@ func (d *Dispatcher) Start(ctx context.Context, targets []string) <-chan model.R
 func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Result, wg *sync.WaitGroup, stats *model.Stats) {
 	defer wg.Done()
 	dialer := &net.Dialer{Timeout: 3 * time.Second}
-	for val := range jobs {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		start := time.Now()
 
-		// time.Sleep(time.Millisecond * time.Duration(rand.IntN(80)+20))
+	for val := range jobs {
+		if ctx.Err() != nil {
+			return
+		}
+
+		start := time.Now()
 		res := model.Result{
 			Address: val.Address,
 		}
+
 		conn, err := dialer.DialContext(ctx, "tcp", val.Address)
 		res.Latency = time.Since(start)
 
@@ -90,6 +105,5 @@ func worker(ctx context.Context, jobs <-chan model.Job, resCh chan<- model.Resul
 			return
 		case resCh <- res:
 		}
-
 	}
 }
